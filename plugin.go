@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/mattermost/mattermost-server/v5/model"
@@ -10,9 +11,9 @@ import (
 
 const pluginCommand = "antimatter"
 
-var postGrabSize = 50
+var postGrabSize = 25
 
-// HelloWorldPlugin implements the interface expected by the Mattermost server to communicate
+// AntimatterPlugin implements the interface expected by the Mattermost server to communicate
 // between the server and plugin processes.
 type AntimatterPlugin struct {
 	plugin.MattermostPlugin
@@ -47,19 +48,31 @@ func (p *AntimatterPlugin) ExecuteCommand(c *plugin.Context, args *model.Command
 		if !p.API.HasPermissionToChannel(args.UserId, args.ChannelId, model.PERMISSION_DELETE_OTHERS_POSTS) {
 			response = "You do not have the permissions necessary to run this command."
 		}
-		postlist, err := p.API.GetPostsForChannel(args.ChannelId, 0, postGrabSize)
-		if err != nil {
-			errOut = err
-			break
-		}
-		posts := postlist.ToSlice()
-		for i := 0; i < len(posts); i++ {
-			err := p.API.DeletePost(posts[i].Id)
+		numDeleted := 0
+		for postsLeft := true; postsLeft; {
+			postlist, err := p.API.GetPostsForChannel(args.ChannelId, 0, postGrabSize)
 			if err != nil {
 				errOut = err
 				break
 			}
+			posts := postlist.ToSlice()
+			if len(posts) > 0 {
+				for i := 0; i < len(posts); i++ {
+					err := p.API.DeletePost(posts[i].Id)
+					if err != nil {
+						errOut = err
+						break
+					}
+					numDeleted++
+				}
+			} else {
+				postsLeft = false
+			}
 		}
+		if errOut != nil {
+			break
+		}
+		response = "Successfully deleted " + strconv.Itoa(numDeleted) + " posts."
 	}
 
 	if errOut != nil {
